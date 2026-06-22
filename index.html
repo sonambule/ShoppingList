@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-DeXjoF0aDgXkKt22e1NSCjFudI3g30kNOJEtpkznHRw=' 'unsafe-inline'; style-src 'sha256-xceqtUU07rrmoPMtiZB8H0bYdmGRfbyACl46mNPxXn0=' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; manifest-src data:; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-P1iCAJFArwxps3gCTLd1ctlzKRAuf/bPIxZw1ob/lQM=' 'unsafe-inline'; style-src 'sha256-4NTRLCIGN9PyF+F79VTPOW7HVQVMwQq4bI/CdgvussE=' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; manifest-src data:; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#fbf7f2">
@@ -332,6 +332,51 @@
   .clear:hover{color:var(--accent); border-color:var(--accent);}
   .clear:focus-visible{outline:3px solid var(--accent); outline-offset:2px;}
 
+  /* ---------- Previously added ---------- */
+  .history-panel{
+    background:var(--surface); border:2px solid var(--line); border-radius:var(--radius);
+    padding:14px; margin:0 0 20px; box-shadow:var(--shadow);
+  }
+  .history-bar{display:flex; gap:10px; margin-bottom:13px;}
+  .history-filter{
+    flex:1; min-width:0;
+    font-family:var(--font); font-size:14px; font-weight:500; color:var(--ink);
+    padding:10px 14px; border:2px solid var(--line); border-radius:12px; background:var(--bg); outline:none;
+    transition:border-color .15s ease;
+  }
+  .history-filter::placeholder{color:var(--muted); font-weight:400;}
+  .history-filter:focus-visible{border-color:var(--accent);}
+  .history-edit{
+    flex:0 0 auto;
+    font-family:var(--font); font-size:13px; font-weight:600; color:var(--muted);
+    background:transparent; border:2px solid var(--line); border-radius:12px; padding:8px 16px; cursor:pointer;
+    transition:color .15s ease, background .15s ease, border-color .15s ease;
+  }
+  .history-edit[aria-pressed="true"]{color:#fff; background:var(--accent); border-color:var(--accent);}
+  .history-edit:focus-visible{outline:3px solid var(--accent); outline-offset:2px;}
+  .history-chips{display:flex; flex-wrap:wrap; gap:8px;}
+  .hist-chip{
+    display:inline-flex; align-items:center; gap:8px;
+    font-family:var(--font); font-size:14px; font-weight:600; color:var(--ink);
+    background:var(--bg); border:2px solid var(--line); border-radius:999px;
+    padding:8px 12px 8px 15px; cursor:pointer;
+    transition:border-color .15s ease, transform .1s ease, opacity .15s ease;
+  }
+  .hist-chip:hover{border-color:var(--accent);}
+  .hist-chip:active{transform:scale(.96);}
+  .hist-chip:focus-visible{outline:3px solid var(--accent); outline-offset:2px;}
+  .hist-chip-group{
+    font-size:11px; font-weight:600; color:var(--muted);
+    background:var(--surface); border:1px solid var(--line); border-radius:7px; padding:1px 6px;
+  }
+  .hist-chip-mark{font-size:17px; font-weight:700; line-height:1; color:var(--accent); width:16px; text-align:center;}
+  .hist-chip.on-list{opacity:.5; cursor:default; border-style:dashed;}
+  .hist-chip.on-list .hist-chip-mark{color:var(--go);}
+  .hist-chip.on-list:hover{border-color:var(--line);}
+  .hist-chip.editing{border-color:var(--accent);}
+  .hist-chip.editing .hist-chip-mark{color:var(--accent);}
+  .history-empty{color:var(--muted); font-size:14px; padding:8px 2px;}
+
   /* ---------- Empty state ---------- */
   .empty{text-align:center; padding:46px 20px; color:var(--muted);}
   .empty .emoji{font-size:50px; display:block; margin-bottom:14px;}
@@ -381,6 +426,21 @@
       <input id="newGroup" class="group-input" type="text" placeholder="Group (optional)" list="groupOptions" enterkeyhint="done" maxlength="40">
       <datalist id="groupOptions"></datalist>
     </form>
+
+    <button class="done-head" id="historyToggle" type="button" aria-expanded="false" aria-controls="historyPanel" hidden>
+      <span class="chev" aria-hidden="true">&#9654;</span>
+      <span id="historyToggleLabel">Previously added</span>
+      <span class="rule" aria-hidden="true"></span>
+    </button>
+    <section class="history-panel" id="historyPanel" hidden aria-label="Previously added items">
+      <div class="history-bar">
+        <label for="historyFilter" class="sr-only">Filter previously added items</label>
+        <input id="historyFilter" class="history-filter" type="text" placeholder="Filter previous items" enterkeyhint="search" autocomplete="off">
+        <button id="historyEdit" class="history-edit" type="button" aria-pressed="false">Edit</button>
+      </div>
+      <div class="history-chips" id="historyChips"></div>
+      <div class="history-empty" id="historyEmpty" hidden></div>
+    </section>
 
     <div id="activeArea"></div>
     <div id="emptyState"></div>
@@ -440,8 +500,26 @@
     }
     return out;
   }
+  function histKey(t){ return (t||"").trim().toLowerCase(); }
+  function sanitizeHistory(h){
+    var out={};
+    for(var k in h){
+      if(!Object.prototype.hasOwnProperty.call(h,k)) continue;
+      var e=h[k];
+      if(e && typeof e.text==="string"){
+        var key=histKey(e.text); if(!key) continue;
+        out[key]={
+          text: String(e.text).slice(0,120),
+          group: (typeof e.group==="string" ? e.group.slice(0,40) : ""),
+          count: (typeof e.count==="number" && e.count>0 ? Math.floor(e.count) : 1),
+          last: (typeof e.last==="number" ? e.last : 0)
+        };
+      }
+    }
+    return out;
+  }
   function loadState(){
-    var s={items:[], groupOrder:[], theme:{}};
+    var s={items:[], groupOrder:[], theme:{}, history:{}};
     try{
       var raw=localStorage.getItem(KEY);
       if(raw){
@@ -450,6 +528,7 @@
           if(Array.isArray(p.items)) s.items=sanitizeItems(p.items);
           if(Array.isArray(p.groupOrder)) s.groupOrder=p.groupOrder.filter(function(g){return typeof g==="string" && g;});
           if(p.theme && typeof p.theme==="object") s.theme=sanitizeTheme(p.theme);
+          if(p.history && typeof p.history==="object") s.history=sanitizeHistory(p.history);
         }
         return s;
       }
@@ -464,6 +543,14 @@
 
   var state = loadState();
   var doneOpen = false;
+  var histOpen = false;
+  var histEditing = false;
+
+  // Seed history with anything already on the list (e.g. from before this feature existed)
+  state.items.forEach(function(i){
+    var k=histKey(i.text);
+    if(k && !state.history[k]) state.history[k]={ text:i.text.slice(0,120), group:i.group||"", count:1, last:Date.now() };
+  });
 
   function pruneGroups(){
     var present={};
@@ -474,7 +561,7 @@
   }
   function save(){
     pruneGroups();
-    try{ localStorage.setItem(KEY, JSON.stringify({items:state.items, groupOrder:state.groupOrder, theme:state.theme})); }catch(e){}
+    try{ localStorage.setItem(KEY, JSON.stringify({items:state.items, groupOrder:state.groupOrder, theme:state.theme, history:state.history})); }catch(e){}
   }
 
   function byId(id){ for(var i=0;i<state.items.length;i++){ if(state.items[i].id===id) return state.items[i]; } return null; }
@@ -485,9 +572,34 @@
     text=(text||"").trim();
     if(!text) return;
     group=(group||"").trim().slice(0,40);
-    state.items.push({ id:uid(), text:text.slice(0,120), done:false, group:group });
+    text=text.slice(0,120);
+    state.items.push({ id:uid(), text:text, done:false, group:group });
     if(group && state.groupOrder.indexOf(group)===-1) state.groupOrder.push(group);
+    histAdd(text, group);
     save(); render();
+  }
+
+  /* ---------- History store ---------- */
+  function histAdd(text, group){
+    var k=histKey(text); if(!k) return;
+    var e=state.history[k];
+    if(e){ e.count=(e.count||0)+1; e.last=Date.now(); e.text=text; e.group=group||""; }
+    else state.history[k]={ text:text, group:group||"", count:1, last:Date.now() };
+  }
+  function histSetGroup(text, group){
+    var e=state.history[histKey(text)];
+    if(e) e.group=group||"";
+  }
+  function histRemove(k){ if(state.history[k]) delete state.history[k]; }
+  function historyArray(){
+    var out=[];
+    for(var k in state.history){
+      if(!Object.prototype.hasOwnProperty.call(state.history,k)) continue;
+      var e=state.history[k];
+      out.push({ key:k, text:e.text, group:e.group||"", count:e.count||1, last:e.last||0 });
+    }
+    out.sort(function(a,b){ if(b.count!==a.count) return b.count-a.count; return b.last-a.last; });
+    return out;
   }
 
   /* ---------- Theme ---------- */
@@ -669,6 +781,9 @@
     }else if(state.groupOrder.indexOf(newName)===-1){
       state.groupOrder.push(newName);
     }
+    for(var hk in state.history){
+      if(Object.prototype.hasOwnProperty.call(state.history,hk) && state.history[hk].group===oldName) state.history[hk].group=newName;
+    }
     return true;
   }
 
@@ -778,6 +893,7 @@
     var done=state.items.filter(function(x){ return x.done; });
     state.items=newActive.concat(done);
     state.groupOrder=order;
+    newActive.forEach(function(x){ histSetGroup(x.text, x.group); });
   }
 
   /* ---------- Render ---------- */
@@ -858,9 +974,61 @@
     }
 
     refreshGroupOptions();
+    renderHistory();
   }
 
-  /* ---------- Wire up ---------- */
+  function renderHistory(){
+    var toggle=document.getElementById("historyToggle");
+    var panel=document.getElementById("historyPanel");
+    var arr=historyArray();
+    if(arr.length===0){ toggle.hidden=true; panel.hidden=true; histOpen=false; return; }
+
+    toggle.hidden=false;
+    document.getElementById("historyToggleLabel").textContent="Previously added ("+arr.length+")";
+    toggle.setAttribute("aria-expanded", histOpen?"true":"false");
+    panel.hidden=!histOpen;
+    if(!histOpen) return;
+
+    var editBtn=document.getElementById("historyEdit");
+    editBtn.setAttribute("aria-pressed", histEditing?"true":"false");
+    editBtn.textContent=histEditing?"Done":"Edit";
+
+    var f=(document.getElementById("historyFilter").value||"").trim().toLowerCase();
+    var shown=f ? arr.filter(function(e){ return e.text.toLowerCase().indexOf(f)>=0; }) : arr;
+
+    var activeKeys={};
+    state.items.forEach(function(i){ if(!i.done) activeKeys[histKey(i.text)]=true; });
+
+    var chips=document.getElementById("historyChips"); chips.textContent="";
+    var emptyEl=document.getElementById("historyEmpty");
+    if(shown.length===0){ emptyEl.hidden=false; emptyEl.textContent=f?"No matches.":"Nothing here yet."; return; }
+    emptyEl.hidden=true;
+
+    shown.forEach(function(e){
+      var onList=!!activeKeys[e.key];
+      var chip=document.createElement("button");
+      chip.type="button";
+      chip.className="hist-chip"+(onList?" on-list":"")+(histEditing?" editing":"");
+      var t=document.createElement("span"); t.className="hist-chip-text"; t.textContent=e.text;
+      chip.appendChild(t);
+      if(e.group){ var g=document.createElement("span"); g.className="hist-chip-group"; g.textContent=e.group; chip.appendChild(g); }
+      var mark=document.createElement("span"); mark.className="hist-chip-mark";
+      mark.textContent = histEditing ? "\u00d7" : (onList ? "\u2713" : "+");
+      chip.appendChild(mark);
+
+      if(histEditing){
+        chip.setAttribute("aria-label","Remove "+e.text+" from previously added");
+        chip.addEventListener("click", function(){ histRemove(e.key); save(); renderHistory(); });
+      }else if(onList){
+        chip.setAttribute("aria-label", e.text+" is already on your list");
+        chip.disabled=true;
+      }else{
+        chip.setAttribute("aria-label","Add "+e.text+(e.group?(" to "+e.group):"")+" to list");
+        chip.addEventListener("click", function(){ add(e.text, e.group); });
+      }
+      chips.appendChild(chip);
+    });
+  }
   function init(){
     els.count=document.getElementById("count");
     els.empty=document.getElementById("emptyState");
@@ -904,6 +1072,17 @@
         if(HEX.test(this.value)){ state.theme[v]=this.value; applyTheme(state.theme); save(); }
       });
     }
+
+    document.getElementById("historyToggle").addEventListener("click", function(){
+      histOpen=!histOpen;
+      if(!histOpen) histEditing=false;
+      renderHistory();
+      if(histOpen){ var fl=document.getElementById("historyFilter"); if(fl) fl.focus(); }
+    });
+    document.getElementById("historyEdit").addEventListener("click", function(){
+      histEditing=!histEditing; renderHistory();
+    });
+    document.getElementById("historyFilter").addEventListener("input", function(){ renderHistory(); });
 
     applyTheme(state.theme);
     buildPresets();
